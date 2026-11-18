@@ -11,6 +11,8 @@
    (versión | origen: 0 foto, 1 maqueta | 16 zonas de izquierda a derecha y de arriba abajo;
    "-" = zona vacía o sin colorear).
 
+   Solo se descarta el fondo que tiene colores que un pelaje casi nunca tiene (pasto, cielo, paredes de color).
+
    Canvas solo lee píxeles. NO reconoce razas, caras ni partes del cuerpo, y tampoco separa a la
    mascota del fondo (se probó una separación por contraste y empeoraba los resultados: confundía
    cajas, cojines y peluches con la mascota). Por eso la comparación es aproximada y se presenta
@@ -47,6 +49,37 @@ function ovaloCentral(w, h) {
   return m;
 }
 
+/* Quita de la máscara el fondo que se nota que NO es pelaje: pasto, cielo, paredes de color, cojines azules...
+   Se aprende el color del borde de la foto y se borra lo que, partiendo del borde, tiene ese color y además
+   es un color que un pelaje casi nunca tiene (verde, azul, violeta, rosado). Los fondos blancos, grises o
+   cafés NO se tocan a propósito: no se pueden distinguir de un perro blanco, gris o café (así se evita borrar
+   al animal). Si quedara muy poco, se descarta el recorte y se usa la máscara original. */
+function quitarFondoColor(rgba, w, h, mascara) {
+  const anillo = Math.max(2, Math.round(Math.min(w, h) * 0.06)), pts = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (x >= anillo && x < w - anillo && y >= anillo && y < h - anillo) continue;
+    const i = (y * w + x) * 4; if (rgba[i + 3] < 128) continue;
+    pts.push({ lab: rgbALab(rgba[i], rgba[i + 1], rgba[i + 2]), rgb: [rgba[i], rgba[i + 1], rgba[i + 2]], w: 1 });
+  }
+  if (pts.length < 20) return mascara;
+  const fondo = agruparColores(pts, 3).map(c => labDe(c.hex));
+  const esFondo = new Uint8Array(w * h), pila = [];
+  const parecidoAlFondo = p => {
+    const i = p * 4, lab = rgbALab(rgba[i], rgba[i + 1], rgba[i + 2]);
+    return esColorAjeno(lab) && Math.min(...fondo.map(f => distLab(lab, f))) < 18;
+  };
+  const meter = p => { if (!esFondo[p] && parecidoAlFondo(p)) { esFondo[p] = 1; pila.push(p); } };
+  for (let x = 0; x < w; x++) { meter(x); meter((h - 1) * w + x); }
+  for (let y = 0; y < h; y++) { meter(y * w); meter(y * w + w - 1); }
+  while (pila.length) {
+    const p = pila.pop(), x = p % w, y = (p / w) | 0;
+    if (x > 0) meter(p - 1); if (x < w - 1) meter(p + 1); if (y > 0) meter(p - w); if (y < h - 1) meter(p + w);
+  }
+  const nueva = new Uint8Array(w * h); let antes = 0, quedan = 0;
+  for (let p = 0; p < w * h; p++) if (mascara[p]) { antes++; if (!esFondo[p]) { nueva[p] = 1; quedan++; } }
+  return quedan >= antes * 0.4 && quedan >= 150 ? nueva : mascara;
+}
+
 /* ----- 2) De una máscara a la cuadrícula de 4 x 4 zonas ----- */
 /* rgba: píxeles; mascara: 1 = cuenta; propio (opcional): 1 = además tiene color propio (maqueta) */
 function celdasDe(rgba, mascara, w, h, propio) {
@@ -81,7 +114,7 @@ function serializarFirma(origen, celdas) {      // origen: 0 = foto, 1 = maqueta
 /* Foto (imagen o canvas) -> { paleta, firma }. paleta: colores del centro de la foto; firma: texto de 16 zonas. */
 function analizarFoto(el) {
   const { data, w, h } = pixelesReducidos(el, FIRMA.LADO_FOTO);
-  const mascara = ovaloCentral(w, h), pts = [];
+  const mascara = quitarFondoColor(data, w, h, ovaloCentral(w, h)), pts = [];
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const i = y * w + x; if (!mascara[i] || data[i * 4 + 3] < 128) continue;
     const dx = (x - w / 2) / (w / 2), dy = (y - h / 2) / (h / 2), r = data.subarray(i * 4, i * 4 + 3);
@@ -151,14 +184,14 @@ function parsearFirma(s) {
 function distanciaRegional(A, B) {
   const N = FIRMA.N;
   let sf = 0, nf = 0;
-  for (let f = 0; f < N; f++) if (A.filas[f] && B.filas[f]) { sf += distLab(A.filas[f], B.filas[f]); nf++; }
+  for (let f = 0; f < N; f++) if (A.filas[f] && B.filas[f]) { sf += distPelo(A.filas[f], B.filas[f]); nf++; }
   const dFilas = nf >= 2 ? sf / nf : null;
   let dCuadro = null;
   for (const voltear of [false, true]) {
     let s = 0, n = 0;
     for (let f = 0; f < N; f++) for (let c = 0; c < N; c++) {
       const a = A.celdas[f * N + c], b = B.celdas[f * N + (voltear ? N - 1 - c : c)];
-      if (a && b) { s += distLab(a, b); n++; }
+      if (a && b) { s += distPelo(a, b); n++; }
     }
     if (n >= 4 && (dCuadro === null || s / n < dCuadro)) dCuadro = s / n;
   }

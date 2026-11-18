@@ -101,11 +101,41 @@ function paletaDeColores(colores, manchas) {
   return Object.keys(mapa).map(hex => ({ hex, w: mapa[hex] }));
 }
 
-/* distancia entre dos paletas: qué tan lejos queda cada color del color más cercano de la otra */
-function distanciaPaletas(consulta, reporte) {
+/* Distancia de color "de pelaje": la luz de una foto (sombra, flash, sol) cambia mucho el brillo,
+   pero casi no cambia el matiz. Por eso el brillo pesa menos que el tono: un blanco dibujado
+   se parece a un blanco grisáceo de foto, pero NO a un perro color arena o café. */
+const distPelo = (a, b) => Math.hypot(0.6 * (a[0] - b[0]), a[1] - b[1], a[2] - b[2]);
+
+/* ¿Es un color que un pelaje real casi nunca tiene? (verde, azul, violeta, rosado, muy saturado).
+   Si aparece en una foto, casi seguro es fondo (pasto, cielo, pared, juguete) y no la mascota. */
+function esColorAjeno(lab) {
+  const C = Math.hypot(lab[1], lab[2]);
+  if (C < 14) return false;                                   // negro, grises y blancos: siempre posibles
+  const h = Math.atan2(lab[2], lab[1]) * 180 / Math.PI;       // 15°-105° = café, canela, dorado, naranja
+  return h < 10 || h > 105 || C > 80;
+}
+
+/* Parecido de paletas (0 a 1). Se mira en los dos sentidos, para no dejar pasar perros distintos:
+   - cubre:   ¿los colores que dibujaste están en el reporte?
+   - explica: ¿los colores del reporte están en tu dibujo? (un perro café no "explica" un dálmata)
+   Los colores poco frecuentes pesan más de lo que ocupan (las manchas negras SON el dálmata),
+   y los colores ajenos al pelaje que tu dibujo no tiene casi no cuentan (probable fondo). */
+const SIGMA_COLOR = 22, REALCE_MINORIAS = 0.6;
+
+function parecidoPaletas(consulta, reporte) {
   const A = prepararPaleta(consulta), B = prepararPaleta(reporte);
-  const unaVia = (P, Q) => P.reduce((s, p) => s + p.w * Math.min(...Q.map(q => distLab(p.lab, q.lab))), 0);
-  return 0.65 * unaVia(A, B) + 0.35 * unaVia(B, A);
+  if (!A.length || !B.length) return 0;
+  B.forEach(b => {
+    const lejos = Math.min(...A.map(a => distPelo(a.lab, b.lab))) > 25;
+    b.p = b.w * (lejos && esColorAjeno(b.lab) ? 0.25 : 1);
+  });
+  const repartir = (L, k) => { const t = L.reduce((s, x) => s + Math.pow(x[k], REALCE_MINORIAS), 0) || 1; L.forEach(x => { x.u = Math.pow(x[k], REALCE_MINORIAS) / t; }); };
+  repartir(A, 'w'); repartir(B, 'p');
+  const igual = d => Math.exp(-Math.pow(d / SIGMA_COLOR, 2));
+  const mejor = (c, Q) => Math.max(...Q.map(q => igual(distPelo(c.lab, q.lab))));
+  const cubre = A.reduce((s, a) => s + a.u * mejor(a, B), 0);
+  const explica = B.reduce((s, b) => s + b.u * mejor(b, A), 0);
+  return Math.sqrt(cubre * explica);
 }
 
 const TAMANOS = ['pequeno', 'mediano', 'grande'];
@@ -114,15 +144,15 @@ const palabras = txt => new Set((String(txt || '').toLowerCase().normalize('NFD'
 
 /* Cuánto pesa cada parte del parecido. Solo se usan las partes que ambos lados tienen:
    un reporte antiguo (sin zonas) se compara solo por su paleta, sin perder puntos por eso. */
-const PESO_PALETA = 0.5, PESO_ZONAS = 0.5, ESCALA_PALETA = 32, ESCALA_ZONAS = 26;
+const PESO_PALETA = 0.55, PESO_ZONAS = 0.45, ESCALA_ZONAS = 22;
 
 /* porcentaje de parecido (0 a 100) entre lo que busca el usuario y un reporte */
 function parecido(busqueda, r) {
   if (!r.paleta || !r.paleta.length) return 0;
-  const sPaleta = Math.exp(-distanciaPaletas(busqueda.paleta, r.paleta) / ESCALA_PALETA);
+  const sPaleta = parecidoPaletas(busqueda.paleta, r.paleta);
   const zonas = busqueda.firma && r.firma ? distanciaRegional(busqueda.firma, r.firma) : null;
   let s = sPaleta;
-  if (zonas !== null) s = (PESO_PALETA * sPaleta + PESO_ZONAS * Math.exp(-zonas / ESCALA_ZONAS)) / (PESO_PALETA + PESO_ZONAS);
+  if (zonas !== null) s = (PESO_PALETA * sPaleta + PESO_ZONAS * Math.exp(-Math.pow(zonas / ESCALA_ZONAS, 2))) / (PESO_PALETA + PESO_ZONAS);
   let pct = 100 * s;
   if (busqueda.tipo && r.tipo && busqueda.tipo !== r.tipo) pct *= 0.25;   // perro y gato casi nunca coinciden
   if (busqueda.tamano && r.tamano) pct *= 1 - 0.14 * Math.abs(TAMANOS.indexOf(busqueda.tamano) - TAMANOS.indexOf(r.tamano));
