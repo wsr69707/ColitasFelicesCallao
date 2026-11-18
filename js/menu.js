@@ -7,14 +7,14 @@ function crearMenu() {
     const contenedor = document.getElementById("menu");
     contenedor.innerHTML = `
         <div class="menu" id="barra-menu">
-            <img src="imagenes/logo-menu.png" class="logo" alt="Logo de Felices Colitas Callao, protección de mascotas">
+            <img src="imagenes/logo-colitas-felices-menu.png" class="logo" alt="Logo de Colitas Felices Callao, protección de mascotas">
             <button class="boton-menu" id="boton-menu">☰</button>
             <div class="enlaces" id="enlaces">
                 <ul>
                     <li><a href="index.html">Inicio</a></li>
                     <li><a href="quienes-somos.html">Quiénes somos</a></li>
                     <li class="tiene-submenu">
-                        <a href="historias-mascotas-felices.html" aria-haspopup="true">Felices Colitas Blog<span class="flecha-sub" aria-hidden="true">▼</span></a>
+                        <a href="historias-mascotas-felices.html" aria-haspopup="true">Colitas Felices Blog<span class="flecha-sub" aria-hidden="true">▼</span></a>
                         <div class="submenu">
                             <ul>
                                 <li><a href="historias-mascotas-felices.html">Historias felices</a></li>
@@ -74,7 +74,7 @@ function crearMenu() {
 }
 
 // 2. REDES SOCIALES: en el pie de cada página (menos Inicio, que ya no tiene pie) y en Inicio una barra a la derecha
-// Cambia los enlaces por los de Felices Colitas Callao
+// Cambia los enlaces por los de Colitas Felices Callao
 function crearRedes() {
     const redes = [
         { nombre: "TikTok",   imagen: "tiktok.png",   enlace: "https://www.tiktok.com/" },
@@ -107,7 +107,7 @@ function crearCarrusel() {
     for (let i = 0; i < nombres.length; i++) {
         pista.innerHTML += `
             <div class="tarjeta">
-                <img src="imagenes/mascotas/mascota${i + 1}.jpg" alt="${nombres[i]}, mascota de un integrante de Felices Colitas Callao">
+                <img src="imagenes/mascotas/mascota${i + 1}.jpg" alt="${nombres[i]}, mascota de un integrante de Colitas Felices Callao">
                 <h3>${nombres[i]}</h3>
             </div>`;
     }
@@ -123,7 +123,7 @@ function crearColitasFelices() {
     for (let i = 0; i < nombres.length; i++) {
         galeria.innerHTML += `
             <div class="historia">
-                <img src="imagenes/mascotas/mascota${i + 1}.jpg" alt="${nombres[i]}, mascota de un integrante de Felices Colitas Callao">
+                <img src="imagenes/mascotas/mascota${i + 1}.jpg" alt="${nombres[i]}, mascota de un integrante de Colitas Felices Callao">
                 <h3>${nombres[i]}</h3>
                 <p>Escribe aquí la historia de ${nombres[i]} y cómo llegó a su hogar.</p>
             </div>`;

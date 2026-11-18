@@ -38,7 +38,7 @@ function configurar() {
 function doGet(e) {
   try {
     var accion = e && e.parameter && e.parameter.action;
-    if (accion !== 'list') return respuesta_({ ok: true, mensaje: 'Felices Colitas Callao: servicio de reportes activo.' });
+    if (accion !== 'list') return respuesta_({ ok: true, mensaje: 'Colitas Felices Callao: servicio de reportes activo.' });
     return respuesta_({ ok: true, reportes: listarReportes_() });
   } catch (err) {
     return respuesta_({ ok: false, error: 'No pudimos cargar los reportes.' });

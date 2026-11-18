@@ -1,4 +1,4 @@
-# Felices Colitas Callao
+# Colitas Felices Callao
 
 Página web de concientización y ayuda para mascotas del Callao.
 
@@ -8,8 +8,8 @@ Página web de concientización y ayuda para mascotas del Callao.
 |---|---|---|
 | Inicio (sin pie de redes) | `index.html` | Inicio |
 | Quiénes somos | `quienes-somos.html` | Quiénes somos |
-| Historias felices | `historias-mascotas-felices.html` | Felices Colitas Blog > Historias felices |
-| Infórmate | `informate.html` | Felices Colitas Blog > Infórmate |
+| Historias felices | `historias-mascotas-felices.html` | Colitas Felices Blog > Historias felices |
+| Infórmate | `informate.html` | Colitas Felices Blog > Infórmate |
 | Mascotas perdidas (buscar por maqueta o por imagen) | `mascotas-perdidas-callao.html` | Ayuda > Mascotas perdidas |
 | Reportar una mascota | `reportar-mascota.html` | Ayuda > Reportar una mascota |
 
@@ -20,7 +20,7 @@ La página se ve al **100 %** (tamaño real) y se adapta a computadora, tablet y
 Mientras `js/config.js` esté vacío, la página funciona en **modo prueba**: muestra reportes de ejemplo y
 guarda los reportes nuevos solo en el navegador de quien los envía. Para guardarlos de verdad:
 
-1. Crea una **hoja de cálculo de Google** nueva (por ejemplo, "Felices Colitas - Reportes").
+1. Crea una **hoja de cálculo de Google** nueva (por ejemplo, "Colitas Felices - Reportes").
 2. Entra a **Extensiones > Apps Script**, borra lo que haya y pega el contenido de `google-apps-script/Code.gs`. Guarda.
 3. En la barra superior elige la función **`configurar`** y pulsa **Ejecutar**. Acepta los permisos
    (crea la pestaña "Reportes" con sus columnas y una carpeta de Drive para las fotos).

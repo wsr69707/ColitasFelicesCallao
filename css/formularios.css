@@ -105,3 +105,11 @@
 .acepto label {
     margin: 0;
 }
+
+/* Logo en la tarjeta de iniciar sesión (reemplaza el ícono de persona) */
+.logo-sesion {
+    display: block;
+    width: min(230px, 70%);
+    height: auto;
+    margin: 0 auto 14px;
+}

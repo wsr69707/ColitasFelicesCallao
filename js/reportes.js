@@ -239,7 +239,7 @@ function fichaReporte(r, pct, i) {
   const nivel = pct >= 70 ? 'alto' : pct >= 45 ? 'medio' : 'bajo';
   const q = encodeURIComponent(`${r.lugar}, ${r.distrito}, Callao, Perú`);
   const wa = r.telefono
-    ? `<a class="contactar" href="https://wa.me/51${r.telefono}?text=${encodeURIComponent('Hola, vi tu reporte en Felices Colitas Callao. Creo que es mi mascota.')}" target="_blank" rel="noopener">Es mi mascota</a>`
+    ? `<a class="contactar" href="https://wa.me/51${r.telefono}?text=${encodeURIComponent('Hola, vi tu reporte en Colitas Felices Callao. Creo que es mi mascota.')}" target="_blank" rel="noopener">Es mi mascota</a>`
     : '';
   return `<article class="ficha" style="animation-delay:${Math.min(i, 8) * .08}s">
     ${pct !== null && i === 0 && pct >= 45 ? '<span class="cinta">Mejor coincidencia</span>' : ''}
