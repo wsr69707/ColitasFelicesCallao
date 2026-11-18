@@ -3,7 +3,7 @@
    Lo usan: reportar-mascota.html y mascotas-perdidas-callao.html
    Contiene, en este orden: distritos, colores y parecido, fotos,
    conexión con Google Sheets, reportes de ejemplo y tarjeta de cada reporte.
-   Necesita cargar antes: js/config.js y js/mascota-svg.js
+   Necesita cargar antes: js/config.js y js/mascota-svg.js (y js/firma-visual.js en las páginas que analizan fotos o maquetas)
    ========================================================== */
 
 /* ----- 1) Distritos del Callao (los únicos que acepta la página) ----- */
@@ -112,11 +112,19 @@ const TAMANOS = ['pequeno', 'mediano', 'grande'];
 const PARADAS = new Set(['tiene', 'tienen', 'esta', 'estaba', 'muy', 'pero', 'para', 'como', 'unos', 'unas', 'sobre', 'desde', 'cuando', 'donde', 'tambien', 'siempre']);
 const palabras = txt => new Set((String(txt || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').match(/[a-z]{4,}/g) || []).filter(w => !PARADAS.has(w)));
 
+/* Cuánto pesa cada parte del parecido. Solo se usan las partes que ambos lados tienen:
+   un reporte antiguo (sin zonas) se compara solo por su paleta, sin perder puntos por eso. */
+const PESO_PALETA = 0.5, PESO_ZONAS = 0.5, ESCALA_PALETA = 32, ESCALA_ZONAS = 26;
+
 /* porcentaje de parecido (0 a 100) entre lo que busca el usuario y un reporte */
 function parecido(busqueda, r) {
   if (!r.paleta || !r.paleta.length) return 0;
-  const d = distanciaPaletas(busqueda.paleta, r.paleta);
-  let pct = 100 * Math.exp(-d / 32);
+  const sPaleta = Math.exp(-distanciaPaletas(busqueda.paleta, r.paleta) / ESCALA_PALETA);
+  const zonas = busqueda.firma && r.firma ? distanciaRegional(busqueda.firma, r.firma) : null;
+  let s = sPaleta;
+  if (zonas !== null) s = (PESO_PALETA * sPaleta + PESO_ZONAS * Math.exp(-zonas / ESCALA_ZONAS)) / (PESO_PALETA + PESO_ZONAS);
+  let pct = 100 * s;
+  if (busqueda.tipo && r.tipo && busqueda.tipo !== r.tipo) pct *= 0.25;   // perro y gato casi nunca coinciden
   if (busqueda.tamano && r.tamano) pct *= 1 - 0.14 * Math.abs(TAMANOS.indexOf(busqueda.tamano) - TAMANOS.indexOf(r.tamano));
   const mio = palabras(busqueda.nota);
   if (mio.size && r.nota) { const suyo = palabras(r.nota); let c = 0; mio.forEach(w => { if (suyo.has(w)) c++; }); pct += Math.min(8, c * 4); }
@@ -137,12 +145,15 @@ async function procesarFoto(archivo, maximo = 900) {
   if (!archivo || !archivo.type.startsWith('image/')) throw new Error('Sube una fotografía (JPG o PNG).');
   if (archivo.size > 15 * 1024 * 1024) throw new Error('La foto pesa más de 15 MB. Elige una más liviana.');
   const im = await cargarImagen(archivo);
-  const paleta = paletaDeImagen(im);
   const k = Math.min(1, maximo / Math.max(im.naturalWidth, im.naturalHeight));
   const c = document.createElement('canvas');
   c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
   c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
-  return { dataUrl: c.toDataURL('image/jpeg', 0.8), paleta };
+  // colores y zonas se calculan una sola vez, sobre la foto ya reducida (no sobre la original)
+  let paleta, firma = '';
+  try { ({ paleta, firma } = analizarFoto(c)); } catch (e) { paleta = paletaDeImagen(im); }
+  if (!paleta.length) paleta = paletaDeImagen(im);
+  return { dataUrl: c.toDataURL('image/jpeg', 0.8), paleta, firma };
 }
 
 /* ----- 4) Google Sheets (mediante Google Apps Script) ----- */
@@ -159,12 +170,22 @@ function normalizar(f) {
     id: String(f.id), tipo: f.tipo === 'gato' ? 'gato' : 'perro', tamano: TAMANOS.includes(f.tamano) ? f.tamano : '',
     distrito: f.distrito, lugar: f.lugar || '', fecha: String(f.fecha || '').slice(0, 10), nota: f.nota || '',
     collar: f.collar === true || f.collar === 'Sí' || f.collar === 'Si', nombre: f.nombre || '',
-    telefono: String(f.telefono || '').replace(/\D/g, ''), foto: f.foto || '', paleta: Array.isArray(paleta) ? paleta : []
+    telefono: String(f.telefono || '').replace(/\D/g, ''), foto: f.foto || '', paleta: Array.isArray(paleta) ? paleta : [],
+    firma: parsearFirma(f.firma)      // null en los reportes antiguos: se comparan solo por paleta
   };
 }
 
 async function cargarReportes() {
-  if (!COLITAS_API_URL) return { lista: [...leerPrueba(), ...reportesEjemplo()], prueba: true };
+  if (!COLITAS_API_URL) {
+    const propios = leerPrueba().map(r => ({ ...r, firma: parsearFirma(r.firma) }));
+    const ejemplos = reportesEjemplo();
+    // los ejemplos están dibujados con colores por parte: se analizan igual que una maqueta
+    await Promise.all(ejemplos.map(async r => {
+      try { const a = await analizarMaqueta(r.tipo, r.colores, manchasComoTrazos(r.manchas)); r.paleta = a.paleta.length ? a.paleta : r.paleta; r.firma = parsearFirma(a.firma); }
+      catch (e) { r.firma = null; }
+    }));
+    return { lista: [...propios, ...ejemplos], prueba: true };
+  }
   const r = await fetch(COLITAS_API_URL + '?action=list&t=' + Date.now());
   const j = await r.json();
   if (!j.ok) throw new Error(j.error || 'No pudimos cargar los reportes.');
@@ -231,8 +252,13 @@ function textoFecha(iso) {
   return `Encontrado el ${larga}`;
 }
 
+/* las manchas de un reporte de ejemplo: unos toques de pincel del color indicado */
+function manchasComoTrazos(color) {
+  return color ? [[160,300],[205,330],[235,105],[130,365],[250,240]].map(p => ({ color, size: 26, pts: [p] })) : [];
+}
+
 function fichaReporte(r, pct, i) {
-  const manchas = r.manchas ? [[160,300],[205,330],[235,105],[130,365],[250,240]].map(p => ({ color: r.manchas, size: 26, pts: [p] })) : [];
+  const manchas = manchasComoTrazos(r.manchas);
   const foto = r.foto
     ? `<img src="${esc(r.foto)}" alt="${r.tipo} encontrado en ${esc(r.distrito)}" loading="lazy" referrerpolicy="no-referrer">`
     : mascotaSVG(r.tipo, r.colores, manchas, 'av' + esc(r.id), r.tamano || 'grande');

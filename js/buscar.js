@@ -148,11 +148,20 @@ $('#comentario').addEventListener('input',e=>{ $('#contador').textContent=e.targ
 /* ============================================================
    2) IMAGEN: el usuario sube la foto de su mascota
    ============================================================ */
-const img = { dataUrl:null, paleta:null, tipo:'perro', tamano:'' };
+const img = { dataUrl:null, paleta:null, firma:'', tipo:'perro', tamano:'' };
 
 function mostrarPaleta(paleta){
   $('#coloresDetectados').innerHTML = paleta.map(c =>
     `<span class="muestra" style="--c:${c.hex}"><i></i>${Math.round(c.w*100)}%</span>`).join('');
+}
+
+/* dibuja las 16 zonas que detectamos, para que el usuario vea cómo "ve" la página a su mascota */
+function mostrarZonas(texto){
+  const f = parsearFirma(texto), cont = $('#zonasDetectadas');
+  if(!cont) return;
+  const celdas = texto ? texto.split('|')[2].split(',') : [];
+  cont.innerHTML = f ? celdas.map(c => c==='-' ? '<i class="vacia"></i>' : `<i style="background:#${c}"></i>`).join('') : '';
+  cont.closest('.zonas-bloque').hidden = !f;
 }
 
 async function recibirFoto(archivo){
@@ -160,16 +169,16 @@ async function recibirFoto(archivo){
   try {
     $('#zonaSubir').classList.add('cargando');
     const f = await procesarFoto(archivo, 700);
-    img.dataUrl = f.dataUrl; img.paleta = f.paleta;
+    img.dataUrl = f.dataUrl; img.paleta = f.paleta; img.firma = f.firma;
     $('#fotoUsuario').src = f.dataUrl;
-    mostrarPaleta(f.paleta);
+    mostrarPaleta(f.paleta); mostrarZonas(f.firma);
     $('#zonaSubir').hidden = true; $('#vistaFoto').hidden = false;
     toast('Foto lista. Ya puedes buscar 🐾');
   } catch(e){ toast(e.message); }
   finally { $('#zonaSubir').classList.remove('cargando'); $('#archivoFoto').value=''; }
 }
 function quitarFoto(){
-  img.dataUrl = null; img.paleta = null;
+  img.dataUrl = null; img.paleta = null; img.firma = ''; mostrarZonas('');
   $('#vistaFoto').hidden = true; $('#zonaSubir').hidden = false; $('#fotoUsuario').removeAttribute('src');
 }
 $('#archivoFoto').addEventListener('change', e => recibirFoto(e.target.files[0]));
@@ -200,33 +209,39 @@ let limite = 12;              // cuántas tarjetas se muestran
 function sacudir(btn){ btn.classList.remove('sacudir'); void btn.offsetWidth; btn.classList.add('sacudir'); }
 const pasos = ['Analizando colores…','Comparando con los reportes…','Revisando los distritos del Callao…'];
 
-function lanzarBusqueda(btn, cajaEscaner, estadoEl, datos){
+/* Muestra la animación mientras se calcula (mínimo ~0,7 s para que se vea) y luego pinta los resultados.
+   "calcular" devuelve lo que busca el usuario; el trabajo pesado de Canvas se hace una sola vez, aquí. */
+function lanzarBusqueda(btn, cajaEscaner, estadoEl, calcular){
   btn.disabled = true; cajaEscaner.classList.add('buscando');
   let k = 0; estadoEl.textContent = pasos[0];
   const t = setInterval(()=>{ k=(k+1)%pasos.length; estadoEl.textContent=pasos[k]; }, 700);
-  setTimeout(()=>{
-    clearInterval(t); cajaEscaner.classList.remove('buscando'); btn.disabled = false;
+  const fin = () => { clearInterval(t); cajaEscaner.classList.remove('buscando'); btn.disabled = false; };
+  Promise.all([calcular(), new Promise(ok=>setTimeout(ok, 700))]).then(([datos])=>{
+    fin();
     busqueda = datos; limite = 12;
     $('#fTipo').value = datos.tipo;
     pintarLista(true);
-  }, 1900);
+  }).catch(()=>{ fin(); toast('No pudimos analizar la búsqueda. Inténtalo otra vez.'); });
 }
 
 $('#btnBuscar').onclick = ()=>{
   if(!Object.keys(estado.fills).length && !estado.strokes.length){
     sacudir($('#btnBuscar')); return toast('Colorea a tu mascota para poder buscar 🎨');
   }
-  lanzarBusqueda($('#btnBuscar'), $('#caja'), $('#estadoBusqueda'), {
-    modo:'maqueta', paleta:paletaDeMaqueta(estado.fills, estado.strokes), tipo:estado.pet,
-    tamano:estado.tamano, nota:$('#comentario').value, nombre:$('#nombre').value.trim()
+  const pet = estado.pet, fills = {...estado.fills}, strokes = estado.strokes.map(t=>({...t}));
+  lanzarBusqueda($('#btnBuscar'), $('#caja'), $('#estadoBusqueda'), async ()=>{
+    // Canvas lee la maqueta: colores por superficie real y zonas. Si algo falla, se usa el cálculo anterior.
+    let paleta = paletaDeMaqueta(fills, strokes), firma = null;
+    try { const a = await analizarMaqueta(pet, fills, strokes); if(a.paleta.length) paleta = a.paleta; firma = parsearFirma(a.firma); } catch(e){}
+    return { modo:'maqueta', paleta, firma, tipo:pet, tamano:estado.tamano, nota:$('#comentario').value, nombre:$('#nombre').value.trim() };
   });
 };
 $('#btnBuscarImg').onclick = ()=>{
   if(!img.paleta){ sacudir($('#btnBuscarImg')); return toast('Primero sube una foto de tu mascota 📷'); }
-  lanzarBusqueda($('#btnBuscarImg'), $('#vistaFoto'), $('#estadoImg'), {
-    modo:'imagen', paleta:img.paleta, tipo:img.tipo, tamano:img.tamano,
+  lanzarBusqueda($('#btnBuscarImg'), $('#vistaFoto'), $('#estadoImg'), async ()=>({
+    modo:'imagen', paleta:img.paleta, firma:parsearFirma(img.firma), tipo:img.tipo, tamano:img.tamano,
     nota:$('#comentarioImg').value, miniatura:img.dataUrl
-  });
+  }));
 };
 $('#btnQuitarBusqueda').onclick = ()=>{ busqueda = null; pintarLista(false); };
 

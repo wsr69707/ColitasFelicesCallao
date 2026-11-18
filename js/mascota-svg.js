@@ -45,16 +45,28 @@ function trazosSVG(strokes){
   }).join('');
 }
 
-function mascotaSVG(pet, fills, strokes, pre, tamano='grande'){
-  const F = FORMAS[pet];
+/* Tamaño al que se dibuja la maqueta cuando se analiza con Canvas (ver firma-visual.js) */
+const PLANO_W = 120, PLANO_H = 129;
+const SIN_COLOR = '#ff00ff';   // marca "esta parte no se coloreó" en el dibujo plano (solo para analizar)
+
+/* modo = '' : dibujo normal de la página.
+   modo = 'plano' : mismo dibujo, pero sin sombra, ojo, nariz ni detalles, con bordes nítidos y las
+   partes sin colorear en SIN_COLOR. Sirve únicamente para que Canvas lea los píxeles. */
+function mascotaSVG(pet, fills, strokes, pre, tamano='grande', modo=''){
+  const F = FORMAS[pet], plano = modo === 'plano';
   let cuerpo = '', clip = '';
   const dibujar = part => F[part].forEach((e,i)=>{
     const id = `${pre}-${part}-${i}`;
-    cuerpo += `<${e[0]} id="${id}" class="region" data-part="${part}" ${e[1]} fill="${fills[part]||(part==='nariz'?(pet==='perro'?'#1b1b2f':'#e0707f'):'#ffffff')}"/>`;
-    clip += `<use href="#${id}"/>`;
+    const relleno = fills[part] || (plano ? SIN_COLOR : part==='nariz'?(pet==='perro'?'#1b1b2f':'#e0707f'):'#ffffff');
+    cuerpo += `<${e[0]} id="${id}" class="region" data-part="${part}" ${e[1]} fill="${relleno}"/>`;
+    clip += plano ? `<use href="#${id}" xlink:href="#${id}"/>` : `<use href="#${id}"/>`;
   });
   ORDEN.forEach(dibujar);
   const pincel = `<g id="${pre}-trazos" clip-path="url(#${pre}-clip)" style="pointer-events:none">${trazosSVG(strokes)}</g>`;
+  if(plano){
+    return `<svg viewBox="0 0 400 430" width="${PLANO_W}" height="${PLANO_H}" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <defs><clipPath id="${pre}-clip">${clip}</clipPath></defs>${cuerpo}${pincel}</svg>`;
+  }
   const ojoStart = cuerpo.length;
   dibujar('nariz'); dibujar('ojo');
   const ojo = cuerpo.slice(ojoStart);
@@ -66,4 +78,3 @@ function mascotaSVG(pet, fills, strokes, pre, tamano='grande'){
     <g style="pointer-events:none">${F.detalles}</g>
   </svg>`;
 }
-

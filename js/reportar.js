@@ -6,7 +6,7 @@
    ========================================================== */
 
 const $ = s => document.querySelector(s);
-const datos = { tipo: 'perro', tamano: '', fotoDataUrl: '', paleta: [] };
+const datos = { tipo: 'perro', tamano: '', fotoDataUrl: '', paleta: [], firma: '' };
 
 /* distrito (solo del Callao) y fecha (hoy como valor inicial, sin fechas futuras) */
 $('#distrito').innerHTML = opcionesDistritos('Elige el distrito');
@@ -20,7 +20,7 @@ async function recibirFoto(archivo) {
   $('#zonaSubir').classList.add('cargando');
   try {
     const f = await procesarFoto(archivo, 900);
-    datos.fotoDataUrl = f.dataUrl; datos.paleta = f.paleta;
+    datos.fotoDataUrl = f.dataUrl; datos.paleta = f.paleta; datos.firma = f.firma;
     $('#fotoPrevia').src = f.dataUrl;
     $('#colores').innerHTML = f.paleta.map(c => `<span class="punto" style="background:${c.hex}" title="Color detectado"></span>`).join('');
     $('#zonaSubir').hidden = true; $('#vistaFoto').hidden = false;
@@ -29,7 +29,7 @@ async function recibirFoto(archivo) {
   finally { $('#zonaSubir').classList.remove('cargando'); $('#archivoFoto').value = ''; }
 }
 function quitarFoto() {
-  datos.fotoDataUrl = ''; datos.paleta = [];
+  datos.fotoDataUrl = ''; datos.paleta = []; datos.firma = '';
   $('#vistaFoto').hidden = true; $('#zonaSubir').hidden = false; $('#fotoPrevia').removeAttribute('src');
 }
 $('#archivoFoto').addEventListener('change', e => recibirFoto(e.target.files[0]));
@@ -86,7 +86,7 @@ $('#formReporte').addEventListener('submit', async e => {
       tipo: datos.tipo, tamano: datos.tamano, distrito: $('#distrito').value, lugar: $('#lugar').value.trim(),
       fecha: $('#fecha').value, nota: $('#nota').value.trim(), collar: $('#collar').checked,
       nombre: $('#nombre').value.trim(), telefono: $('#telefono').value.replace(/\D/g, ''),
-      paleta: datos.paleta, fotoDataUrl: datos.fotoDataUrl, web: $('#web').value
+      paleta: datos.paleta, firma: datos.firma, fotoDataUrl: datos.fotoDataUrl, web: $('#web').value
     });
     $('#graciasTexto').textContent = r.prueba
       ? 'Modo prueba: el reporte se guardó solo en este navegador. Aparecerá en “Mascotas perdidas”.'

@@ -587,3 +587,10 @@
 @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition: none !important; }
 }
+
+/* ----- Zonas de color que detectamos en la foto (cuadrícula 4 x 4) ----- */
+.zonas-bloque { margin: 6px 0 12px; }
+.zonas-bloque h4 { margin: 0 0 6px; font-size: 15px; }
+.zonas-previa { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; width: 132px; max-width: 100%; }
+.zonas-previa i { aspect-ratio: 1; border-radius: 6px; border: 2px solid var(--negro); }
+.zonas-previa i.vacia { background: repeating-linear-gradient(45deg, #f1f3f5, #f1f3f5 4px, #e3e6ea 4px, #e3e6ea 8px); border-style: dashed; border-color: #b9bec6; }

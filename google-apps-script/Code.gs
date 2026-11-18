@@ -12,8 +12,9 @@
 
 var NOMBRE_HOJA = 'Reportes';
 var NOMBRE_CARPETA = 'Colitas Felices - Fotos de reportes';
+// "firma" es la columna nueva (zonas de color de la foto). Va al final para no mover las demás.
 var COLUMNAS = ['id', 'creado', 'fecha_hallazgo', 'tipo', 'tamano', 'distrito', 'lugar',
-                'descripcion', 'collar', 'nombre', 'telefono', 'foto', 'paleta', 'estado'];
+                'descripcion', 'collar', 'nombre', 'telefono', 'foto', 'paleta', 'estado', 'firma'];
 
 // Solo distritos del Callao
 var DISTRITOS = ['Bellavista', 'Callao', 'Carmen de la Legua Reynoso', 'La Perla', 'La Punta', 'Mi Perú', 'Ventanilla'];
@@ -21,6 +22,7 @@ var TIPOS = ['perro', 'gato'];
 var TAMANOS = ['pequeno', 'mediano', 'grande'];
 var MAX_FOTO_BYTES = 3 * 1024 * 1024;   // 3 MB (la página envía fotos de unos 200 KB)
 var MAX_REPORTES_LISTA = 200;
+var FILAS_A_LEER = 400;                  // solo se leen las últimas filas de la hoja (más rápido cuando crece)
 var MAX_POR_HORA = 5;                    // reportes por celular en una hora
 
 /* ----------------------------------------------------------
@@ -28,6 +30,7 @@ var MAX_POR_HORA = 5;                    // reportes por celular en una hora
    ---------------------------------------------------------- */
 function configurar() {
   var hoja = obtenerHoja_();
+  actualizarEncabezados_(hoja);      // agrega la columna "firma" si tu hoja es anterior a esta versión
   carpetaFotos_();
   Logger.log('Listo. Hoja: "' + hoja.getName() + '". Ahora implementa como aplicación web.');
 }
@@ -50,7 +53,8 @@ function listarReportes_() {
   var ultima = hoja.getLastRow();
   if (ultima < 2) return [];
   var zona = Session.getScriptTimeZone();
-  var filas = hoja.getRange(2, 1, ultima - 1, COLUMNAS.length).getValues();
+  var primera = Math.max(2, ultima - FILAS_A_LEER + 1);        // solo las filas más recientes
+  var filas = hoja.getRange(primera, 1, ultima - primera + 1, COLUMNAS.length).getValues();
   var lista = [];
   for (var i = filas.length - 1; i >= 0 && lista.length < MAX_REPORTES_LISTA; i--) {
     var f = filas[i];
@@ -62,7 +66,8 @@ function listarReportes_() {
       fecha: fechaTexto_(f[2], zona),
       tipo: String(f[3]), tamano: String(f[4]), distrito: String(f[5]), lugar: String(f[6]),
       nota: String(f[7]), collar: String(f[8]) === 'Sí', nombre: String(f[9]),
-      telefono: String(f[10]).replace(/\D/g, ''), foto: String(f[11]), paleta: String(f[12])
+      telefono: String(f[10]).replace(/\D/g, ''), foto: String(f[11]), paleta: String(f[12]),
+      firma: String(f[14] || '')                   // vacía en los reportes antiguos: la página los compara solo por colores
     });
   }
   return lista;
@@ -98,7 +103,7 @@ function doPost(e) {
     hoja.appendRow([
       id, new Date(), d.fecha, d.tipo, d.tamano, d.distrito, limpiar_(d.lugar, 120),
       limpiar_(d.nota, 200), d.collar ? 'Sí' : 'No', limpiar_(d.nombre, 40), String(d.telefono),
-      urlFoto, JSON.stringify(paletaSegura_(d.paleta)), 'Activo'
+      urlFoto, JSON.stringify(paletaSegura_(d.paleta)), 'Activo', firmaSegura_(d.firma)
     ]);
     return respuesta_({ ok: true, id: id });
   } catch (err) {
@@ -140,6 +145,13 @@ function paletaSegura_(paleta) {
   return salida;
 }
 
+// La firma son 16 zonas de color: "2|1|rrggbb,-,rrggbb,..." (versión | confianza | zonas; "-" = zona vacía).
+// Si no tiene exactamente ese formato se guarda vacía; el reporte igual se publica y se compara por su paleta.
+function firmaSegura_(firma) {
+  var t = String(firma || '');
+  return /^2\|[01]\|(?:[0-9a-fA-F]{6}|-)(?:,(?:[0-9a-fA-F]{6}|-)){15}$/.test(t) ? t.toLowerCase() : '';
+}
+
 function superaLimite_(telefono) {
   var cache = CacheService.getScriptCache();
   var clave = 'rep_' + telefono;
@@ -161,8 +173,19 @@ function obtenerHoja_() {
     hoja.setFrozenRows(1);
     hoja.getRange('C:C').setNumberFormat('@');   // fecha como texto (aaaa-mm-dd)
     hoja.getRange('K:K').setNumberFormat('@');   // celular como texto
+    hoja.getRange('O:O').setNumberFormat('@');   // firma como texto
   }
   return hoja;
+}
+
+// Para hojas creadas con la versión anterior: agrega el encabezado "firma" (columna O) sin tocar los datos.
+function actualizarEncabezados_(hoja) {
+  var n = COLUMNAS.length;
+  var encabezado = hoja.getRange(1, 1, 1, n).getValues()[0];
+  if (String(encabezado[n - 1]) !== COLUMNAS[n - 1]) {
+    hoja.getRange(1, n).setValue(COLUMNAS[n - 1]).setFontWeight('bold').setBackground('#F28C28').setFontColor('#ffffff');
+  }
+  hoja.getRange('O:O').setNumberFormat('@');
 }
 
 function carpetaFotos_() {
