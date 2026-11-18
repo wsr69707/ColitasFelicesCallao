@@ -122,6 +122,24 @@ function esColorAjeno(lab) {
    y los colores ajenos al pelaje que tu dibujo no tiene casi no cuentan (probable fondo). */
 const SIGMA_COLOR = 22, REALCE_MINORIAS = 0.6;
 
+/* Cuánto de la paleta es oscuro (negro, café muy oscuro) y cuánto es claro (blanco, crema). */
+function claroOscuro(P) {
+  let osc = 0, cla = 0;
+  P.forEach(c => { if (c.lab[0] < 35) osc += c.w; else if (c.lab[0] > 70) cla += c.w; });
+  return { osc, cla };
+}
+
+/* Patrón: un dálmata (manchas oscuras sobre blanco) NO es un perro todo blanco ni todo negro, aunque
+   compartan colores. Si un lado tiene una parte importante oscura o clara y el otro casi nada, se castiga. */
+function factorPatron(A, B) {
+  const a = claroOscuro(A), b = claroOscuro(B);
+  const falta = (x, y) => x >= 0.05 && y < 0.03;          // x lo tiene un lado; y casi nada el otro
+  let f = 1;
+  if (falta(a.osc, b.osc) || falta(b.osc, a.osc)) f *= 0.45;
+  if (falta(a.cla, b.cla) || falta(b.cla, a.cla)) f *= 0.45;
+  return f;
+}
+
 function parecidoPaletas(consulta, reporte) {
   const A = prepararPaleta(consulta), B = prepararPaleta(reporte);
   if (!A.length || !B.length) return 0;
@@ -135,7 +153,7 @@ function parecidoPaletas(consulta, reporte) {
   const mejor = (c, Q) => Math.max(...Q.map(q => igual(distPelo(c.lab, q.lab))));
   const cubre = A.reduce((s, a) => s + a.u * mejor(a, B), 0);
   const explica = B.reduce((s, b) => s + b.u * mejor(b, A), 0);
-  return Math.sqrt(cubre * explica);
+  return Math.sqrt(cubre * explica) * factorPatron(A, B);
 }
 
 const TAMANOS = ['pequeno', 'mediano', 'grande'];
@@ -151,11 +169,16 @@ function parecido(busqueda, r) {
   if (!r.paleta || !r.paleta.length) return 0;
   const sPaleta = parecidoPaletas(busqueda.paleta, r.paleta);
   const zonas = busqueda.firma && r.firma ? distanciaRegional(busqueda.firma, r.firma) : null;
+  /* Si la mascota tiene manchas (oscuro y claro a la vez, como un dálmata), el color promedio de cada zona sale
+     gris y engaña: un perro todo blanco "se parece" más a un dálmata dibujado que un dálmata real. En ese caso
+     las zonas pesan poco y manda la paleta (que sí ve el blanco y el negro por separado). */
+  const co = claroOscuro(prepararPaleta(busqueda.paleta)), manchada = Math.min(co.osc, co.cla) >= 0.05;
+  const pz = manchada ? 0.15 : PESO_ZONAS, pp = 1 - pz;
   let s = sPaleta;
-  if (zonas !== null) s = (PESO_PALETA * sPaleta + PESO_ZONAS * Math.exp(-Math.pow(zonas / ESCALA_ZONAS, 2))) / (PESO_PALETA + PESO_ZONAS);
+  if (zonas !== null) s = pp * sPaleta + pz * Math.exp(-Math.pow(zonas / ESCALA_ZONAS, 2));
   let pct = 100 * s;
   if (busqueda.tipo && r.tipo && busqueda.tipo !== r.tipo) pct *= 0.25;   // perro y gato casi nunca coinciden
-  if (busqueda.tamano && r.tamano) pct *= 1 - 0.14 * Math.abs(TAMANOS.indexOf(busqueda.tamano) - TAMANOS.indexOf(r.tamano));
+  if (busqueda.tamano && r.tamano) pct *= 1 - 0.08 * Math.abs(TAMANOS.indexOf(busqueda.tamano) - TAMANOS.indexOf(r.tamano));
   const mio = palabras(busqueda.nota);
   if (mio.size && r.nota) { const suyo = palabras(r.nota); let c = 0; mio.forEach(w => { if (suyo.has(w)) c++; }); pct += Math.min(8, c * 4); }
   return Math.max(0, Math.min(100, Math.round(pct)));

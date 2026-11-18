@@ -11,7 +11,7 @@
    (versión | origen: 0 foto, 1 maqueta | 16 zonas de izquierda a derecha y de arriba abajo;
    "-" = zona vacía o sin colorear).
 
-   Solo se descarta el fondo que tiene colores que un pelaje casi nunca tiene (pasto, cielo, paredes de color).
+   Antes de leer los colores se separa la mascota del fondo comparando el borde con el centro de la foto (ver segmentarMascota).
 
    Canvas solo lee píxeles. NO reconoce razas, caras ni partes del cuerpo, y tampoco separa a la
    mascota del fondo (se probó una separación por contraste y empeoraba los resultados: confundía
@@ -49,6 +49,70 @@ function ovaloCentral(w, h) {
   return m;
 }
 
+/* Separa la mascota del fondo comparando dos muestras de la foto: el BORDE (casi siempre es fondo) y el CENTRO
+   (casi siempre es la mascota). Cada píxel se asigna al grupo de color más parecido; lo que se parece al borde
+   es fondo. Reglas para no borrar al animal:
+   - un color del centro solo se considera fondo si domina claramente el borde (pasto que también está bajo el perro);
+   - blanco, gris y negro nunca se tratan como fondo (una pared blanca y un perro blanco se confunden);
+   - un color presente en ambos lados sin dominar el borde se queda con el animal.
+   Después se suaviza el resultado. Si quedara muy poco, se usa la máscara original. */
+function segmentarMascota(rgba, w, h, mascara) {
+  const anillo = Math.max(2, Math.round(Math.min(w, h) * 0.07)), borde = [], centro = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4; if (rgba[i + 3] < 128) continue;
+    const enAnillo = x < anillo || x >= w - anillo || y < anillo || y >= h - anillo;
+    const dx = (x - w / 2) / (w * 0.2), dy = (y - h / 2) / (h * 0.2);
+    const p = { lab: rgbALab(rgba[i], rgba[i + 1], rgba[i + 2]), rgb: [rgba[i], rgba[i + 1], rgba[i + 2]], w: 1 };
+    if (enAnillo) borde.push(p); else if (dx * dx + dy * dy <= 1) centro.push(p);
+  }
+  if (borde.length < 30 || centro.length < 30) return mascara;
+  const fg = agruparColores(centro, 4).map(c => ({ lab: labDe(c.hex), w: c.w, fondo: false }));
+  const bg = agruparColores(borde, 6).map(c => ({ lab: labDe(c.hex), w: c.w, fondo: true }));
+  fg.forEach(f => {                         // un color del centro que domina el borde es fondo (pasto bajo el perro)
+    const gemelo = bg.find(b => distLab(f.lab, b.lab) < 14);
+    const neutro = Math.hypot(f.lab[1], f.lab[2]) < 14;   // blanco, gris o negro: puede ser pared o pelaje, se exige más evidencia
+    if (gemelo && !neutro && gemelo.w > 1.5 * f.w) f.fondo = true;
+  });
+  // un color del borde que también está en el animal y no domina el borde es ambiguo (pared blanca / perro blanco): se queda con el animal
+  const bgFirme = bg.filter(b => !fg.some(f => !f.fondo && distLab(f.lab, b.lab) < 14));
+  const grupos = [...fg, ...bgFirme];
+  let esF = new Uint8Array(w * h);
+  for (let p = 0; p < w * h; p++) {
+    if (!mascara[p]) continue;
+    const l = rgbALab(rgba[p * 4], rgba[p * 4 + 1], rgba[p * 4 + 2]);
+    let bi = 0, bd = Infinity; grupos.forEach((g, i) => { const d = distLab(l, g.lab); if (d < bd) { bd = d; bi = i; } });
+    esF[p] = grupos[bi].fondo ? 0 : 1;
+  }
+  for (let it = 0; it < 2; it++) {          // suavizado: cada punto toma lo que tenga la mayoría de sus vecinos
+    const n = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const p = y * w + x; if (!mascara[p]) continue;
+      let s = 0, t = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const X = x + dx, Y = y + dy; if (X < 0 || Y < 0 || X >= w || Y >= h) continue; t++; s += esF[Y * w + X]; }
+      n[p] = s * 2 >= t ? 1 : 0;
+    }
+    esF = n;
+  }
+  // se descartan las manchas sueltas lejos del animal (ramas, cojines, juguetes): solo quedan las piezas grandes
+  const pieza = new Int32Array(w * h).fill(-1), tamanos = [];
+  for (let p0 = 0; p0 < w * h; p0++) {
+    if (!esF[p0] || pieza[p0] >= 0) continue;
+    const id = tamanos.length, pila = [p0]; pieza[p0] = id; let n = 0;
+    while (pila.length) {
+      const p = pila.pop(), x = p % w, y = (p / w) | 0; n++;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const X = x + dx, Y = y + dy; if (X < 0 || Y < 0 || X >= w || Y >= h) continue;
+        const q = Y * w + X; if (esF[q] && pieza[q] < 0) { pieza[q] = id; pila.push(q); }
+      }
+    }
+    tamanos.push(n);
+  }
+  const mayor = Math.max(0, ...tamanos);
+  for (let p = 0; p < w * h; p++) if (esF[p] && tamanos[pieza[p]] < mayor * 0.12) esF[p] = 0;
+  let antes = 0, quedan = 0; for (let p = 0; p < w * h; p++) if (mascara[p]) { antes++; quedan += esF[p]; }
+  return quedan >= antes * 0.15 && quedan >= 150 ? esF : mascara;
+}
+
 /* Quita de la máscara el fondo que se nota que NO es pelaje: pasto, cielo, paredes de color, cojines azules...
    Se aprende el color del borde de la foto y se borra lo que, partiendo del borde, tiene ese color y además
    es un color que un pelaje casi nunca tiene (verde, azul, violeta, rosado). Los fondos blancos, grises o
@@ -78,6 +142,17 @@ function quitarFondoColor(rgba, w, h, mascara) {
   const nueva = new Uint8Array(w * h); let antes = 0, quedan = 0;
   for (let p = 0; p < w * h; p++) if (mascara[p]) { antes++; if (!esFondo[p]) { nueva[p] = 1; quedan++; } }
   return quedan >= antes * 0.4 && quedan >= 150 ? nueva : mascara;
+}
+
+/* Último filtro: dentro de lo que quedó, se descartan los píxeles de colores que un pelaje casi nunca tiene
+   (verde, azul, rosado, naranja muy vivo: ramas, cojines, juguetes, collares). Si se llevara más de la mitad, no se aplica. */
+function quitarColoresAjenos(rgba, mascara) {
+  const nueva = new Uint8Array(mascara.length); let antes = 0, quedan = 0;
+  for (let p = 0; p < mascara.length; p++) {
+    if (!mascara[p]) continue; antes++;
+    if (!esColorAjeno(rgbALab(rgba[p * 4], rgba[p * 4 + 1], rgba[p * 4 + 2]))) { nueva[p] = 1; quedan++; }
+  }
+  return quedan >= antes * 0.5 && quedan >= 150 ? nueva : mascara;
 }
 
 /* ----- 2) De una máscara a la cuadrícula de 4 x 4 zonas ----- */
@@ -114,7 +189,7 @@ function serializarFirma(origen, celdas) {      // origen: 0 = foto, 1 = maqueta
 /* Foto (imagen o canvas) -> { paleta, firma }. paleta: colores del centro de la foto; firma: texto de 16 zonas. */
 function analizarFoto(el) {
   const { data, w, h } = pixelesReducidos(el, FIRMA.LADO_FOTO);
-  const mascara = quitarFondoColor(data, w, h, ovaloCentral(w, h)), pts = [];
+  const mascara = quitarColoresAjenos(data, quitarFondoColor(data, w, h, segmentarMascota(data, w, h, ovaloCentral(w, h)))), pts = [];
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const i = y * w + x; if (!mascara[i] || data[i * 4 + 3] < 128) continue;
     const dx = (x - w / 2) / (w / 2), dy = (y - h / 2) / (h / 2), r = data.subarray(i * 4, i * 4 + 3);

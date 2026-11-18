@@ -51,13 +51,13 @@ const SIN_COLOR = '#ff00ff';   // marca "esta parte no se coloreó" en el dibujo
 
 /* modo = '' : dibujo normal de la página.
    modo = 'plano' : mismo dibujo, pero sin sombra, ojo, nariz ni detalles, con bordes nítidos y las
-   partes sin colorear en SIN_COLOR. Sirve únicamente para que Canvas lea los píxeles. */
+   partes sin colorear en blanco (igual que se ven en pantalla: lo que ves es lo que se busca). Sirve únicamente para que Canvas lea los píxeles. */
 function mascotaSVG(pet, fills, strokes, pre, tamano='grande', modo=''){
   const F = FORMAS[pet], plano = modo === 'plano';
   let cuerpo = '', clip = '';
   const dibujar = part => F[part].forEach((e,i)=>{
     const id = `${pre}-${part}-${i}`;
-    const relleno = fills[part] || (plano ? SIN_COLOR : part==='nariz'?(pet==='perro'?'#1b1b2f':'#e0707f'):'#ffffff');
+    const relleno = fills[part] || (plano ? '#ffffff' : part==='nariz'?(pet==='perro'?'#1b1b2f':'#e0707f'):'#ffffff');
     cuerpo += `<${e[0]} id="${id}" class="region" data-part="${part}" ${e[1]} fill="${relleno}"/>`;
     clip += plano ? `<use href="#${id}" xlink:href="#${id}"/>` : `<use href="#${id}"/>`;
   });
