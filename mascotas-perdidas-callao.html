@@ -11,6 +11,7 @@
     <link href="css/base.css" rel="stylesheet">
     <link href="css/estructura.css" rel="stylesheet">
     <link href="css/buscar.css" rel="stylesheet">
+    <link href="css/seleccion.css" rel="stylesheet">
     <link href="css/adaptable.css" rel="stylesheet">
 </head>
 
@@ -124,6 +125,10 @@
         </label>
 
         <div class="vista-foto" id="vistaFoto" hidden>
+          <div class="sel-ayuda">
+            <h4>Opcional: encierra a tu mascota</h4>
+            <p>Rodéala con un círculo o elipse para que busquemos solo sus colores y no los del fondo. No hace falta precisión.</p>
+          </div>
           <img id="fotoUsuario" alt="Foto de tu mascota">
           <div class="escaner"></div>
           <div class="estado-busqueda" id="estadoImg">Analizando colores…</div>
@@ -212,6 +217,11 @@
     <div class="rejilla" id="rejilla"></div>
     <div class="centro"><button type="button" class="boton boton-celeste" id="btnMas" hidden>Ver más reportes</button></div>
 
+    <div class="no-encuentro" id="zonaNoEncuentro" hidden>
+      <p>¿No ves a tu mascota entre los resultados? Publica un aviso de búsqueda para que más vecinos puedan ayudarte.</p>
+      <button type="button" class="boton boton-rojo" id="btnNoEncuentro">No encuentro a mi mascota</button>
+    </div>
+
     <p class="nota">Las coincidencias se calculan por el parecido de colores, su ubicación en el cuerpo y el tamaño. Son posibles coincidencias, no una confirmación: revisa siempre la foto y el lugar.</p>
 
     <div class="invitacion">
@@ -250,6 +260,7 @@
 <script src="js/mascota-svg.js"></script>
 <script src="js/reportes.js"></script>
 <script src="js/firma-visual.js"></script>
+<script src="js/seleccion-mascota.js"></script>
 <script src="js/buscar.js"></script>
 <script src="js/menu.js"></script>
 </body>

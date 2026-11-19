@@ -113,3 +113,8 @@
     height: auto;
     margin: 0 auto 14px;
 }
+
+/* ----- Mensajes de inicio de sesión y registro (js/sesion.js) ----- */
+.error-form { margin: 14px 0 0; padding: 10px 14px; font-weight: 800; color: #8E2417; background: #FBE3DF; border-left: 6px solid #C0392B; border-radius: 10px; }
+.error-form[hidden], .aviso-registro[hidden] { display: none; }
+.aviso-registro { margin: 0 0 14px; padding: 10px 14px; font-weight: 800; text-align: center; color: #1f5f33; background: #CDEFD8; border-radius: 10px; }

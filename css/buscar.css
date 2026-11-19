@@ -551,6 +551,23 @@
 .invitacion h3 { font-size: 26px; }
 .invitacion .boton { margin: 0; }
 
+/* reporte que abre una notificación de coincidencia */
+.ficha.destacada { outline: 4px solid #C0392B; outline-offset: 4px; }
+
+/* botón rojo y bloque «No encuentro a mi mascota» (debajo de los resultados) */
+.boton-rojo { background: #C0392B; }
+.boton-rojo:hover { background: var(--negro); }
+.no-encuentro {
+    margin-top: 34px;
+    padding: 24px 30px;
+    text-align: center;
+    background: #FBE3DF;
+    border: 2px dashed #C0392B;
+    border-radius: 22px;
+}
+.no-encuentro p { max-width: 640px; margin: 0 auto 6px; font-weight: 700; }
+.no-encuentro .boton { margin: 10px 0 0; }
+
 /* ----- Aviso flotante ----- */
 .toast {
     position: fixed;

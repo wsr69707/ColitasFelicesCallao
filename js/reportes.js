@@ -1,8 +1,8 @@
 /* ==========================================================
    REPORTES DE MASCOTAS ENCONTRADAS
    Lo usan: reportar-mascota.html y mascotas-perdidas-callao.html
-   Contiene, en este orden: distritos, colores y parecido, fotos,
-   conexión con Google Sheets, reportes de ejemplo y tarjeta de cada reporte.
+   Contiene, en este orden: distritos, colores y MOTOR DE COMPARACIÓN (paletas + firma visual v2/v3),
+   fotos, conexión con Google Sheets, reportes de ejemplo y tarjeta de cada reporte.
    Necesita cargar antes: js/config.js y js/mascota-svg.js (y js/firma-visual.js en las páginas que analizan fotos o maquetas)
    ========================================================== */
 
@@ -41,7 +41,7 @@ function prepararPaleta(p) {
 }
 
 /* agrupa los puntos de color en k grupos (k-medias en espacio Lab) */
-function agruparColores(pts, k) {
+function agruparColores(pts, k, minimo = 0.05) {   // minimo: los grupos más pequeños que esa fracción se descartan
   if (!pts.length) return [];
   let centros = [pts.reduce((a, b) => b.w > a.w ? b : a).lab];
   while (centros.length < k) {
@@ -65,7 +65,7 @@ function agruparColores(pts, k) {
     centros = centros.map((c, i) => grupos[i].w ? grupos[i].lab.map(v => v / grupos[i].w) : c);
   }
   const total = grupos.reduce((s, g) => s + g.w, 0);
-  return grupos.filter(g => g.w / total > 0.05)
+  return grupos.filter(g => g.w / total > minimo)
     .map(g => ({ hex: rgbAHex(g.rgb[0] / g.w, g.rgb[1] / g.w, g.rgb[2] / g.w), w: g.w / total }))
     .sort((a, b) => b.w - a.w);
 }
@@ -140,42 +140,124 @@ function factorPatron(A, B) {
   return f;
 }
 
-function parecidoPaletas(consulta, reporte) {
-  const A = prepararPaleta(consulta), B = prepararPaleta(reporte);
+/* A y B son paletas ya preparadas (prepararPaleta). Si una es maqueta y la otra foto (mixta), el dibujo es una
+   versión simple de la mascota: lo que dibujaste debe estar en la foto (cubre) y se exige menos al revés
+   (la foto trae sombras y restos de fondo que el dibujo no tiene), y los colores se toleran un poco más. */
+function parecidoPaletas(A, B, mixta) {
   if (!A.length || !B.length) return 0;
+  const sigma = mixta ? SIGMA_COLOR + 4 : SIGMA_COLOR;
   B.forEach(b => {
     const lejos = Math.min(...A.map(a => distPelo(a.lab, b.lab))) > 25;
     b.p = b.w * (lejos && esColorAjeno(b.lab) ? 0.25 : 1);
   });
   const repartir = (L, k) => { const t = L.reduce((s, x) => s + Math.pow(x[k], REALCE_MINORIAS), 0) || 1; L.forEach(x => { x.u = Math.pow(x[k], REALCE_MINORIAS) / t; }); };
   repartir(A, 'w'); repartir(B, 'p');
-  const igual = d => Math.exp(-Math.pow(d / SIGMA_COLOR, 2));
+  const igual = d => Math.exp(-Math.pow(d / sigma, 2));
   const mejor = (c, Q) => Math.max(...Q.map(q => igual(distPelo(c.lab, q.lab))));
   const cubre = A.reduce((s, a) => s + a.u * mejor(a, B), 0);
   const explica = B.reduce((s, b) => s + b.u * mejor(b, A), 0);
-  return Math.sqrt(cubre * explica) * factorPatron(A, B);
+  const base = mixta ? Math.pow(cubre, 0.6) * Math.pow(explica, 0.4) : Math.sqrt(cubre * explica);
+  return base * factorPatron(A, B);
 }
 
 const TAMANOS = ['pequeno', 'mediano', 'grande'];
 const PARADAS = new Set(['tiene', 'tienen', 'esta', 'estaba', 'muy', 'pero', 'para', 'como', 'unos', 'unas', 'sobre', 'desde', 'cuando', 'donde', 'tambien', 'siempre']);
 const palabras = txt => new Set((String(txt || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').match(/[a-z]{4,}/g) || []).filter(w => !PARADAS.has(w)));
 
-/* Cuánto pesa cada parte del parecido. Solo se usan las partes que ambos lados tienen:
-   un reporte antiguo (sin zonas) se compara solo por su paleta, sin perder puntos por eso. */
-const PESO_PALETA = 0.55, PESO_ZONAS = 0.45, ESCALA_ZONAS = 22;
+/* ----- Firma visual (v2 antigua y v3 nueva): lectura y comparación por zonas -----
+   firma-visual.js la crea; aquí se lee y se compara, para que exista un solo motor.
+   v2: "2|origen|16 colores"; v3: "3|origen|confianza|elipse y tamaño|16 zonas con confianza y mezcla". */
+const FIRMA = { N: 4, VERSION: 3, MIN_RELLENO: 0.2, LADO_FOTO: 96 };
 
-/* porcentaje de parecido (0 a 100) entre lo que busca el usuario y un reporte */
+/* Texto -> objeto listo para comparar (o null si no hay firma o no es válida: reportes antiguos) */
+function parsearFirma(s) {
+  if (!s) return null;
+  if (typeof s === 'object') return s.celdas ? s : null;
+  s = String(s);
+  let origen, conf, roi = null, orig = null, partes;
+  let m = /^3\|([01])\|(\d)\|(\d{1,3}),(\d{1,3}),(\d{1,3}),(\d{1,3}),(\d{1,5}),(\d{1,5})\|(.+)$/.exec(s);
+  if (m) {
+    origen = +m[1]; conf = +m[2] / 9; partes = m[9].split(',');
+    if (+m[5] > 0 && +m[6] > 0) roi = { cx: +m[3] / 100, cy: +m[4] / 100, rx: +m[5] / 100, ry: +m[6] / 100 };
+    orig = { w: +m[7], h: +m[8] };
+  } else {
+    m = /^2\|([01])\|(.+)$/.exec(s);
+    if (!m) return null;
+    origen = +m[1]; conf = 0.5; partes = m[2].split(',');       // v2: sin confianza propia, se asume intermedia
+  }
+  if (partes.length !== FIRMA.N * FIRMA.N) return null;
+  const celdas = partes.map(p => {
+    const k = /^([0-9a-fA-F]{6})(?:([1-9])([0-9]))?$/.exec(p);
+    if (!k) return null;
+    return { hex: '#' + k[1].toLowerCase(), lab: labDe('#' + k[1]), c: k[2] ? +k[2] / 9 : 0.55, m: k[3] ? +k[3] : 0 };
+  });
+  if (celdas.filter(Boolean).length < 3) return null;
+  const filas = [];                                              // color medio por fila: casi no depende de la postura
+  for (let f = 0; f < FIRMA.N; f++) {
+    const v = celdas.slice(f * FIRMA.N, f * FIRMA.N + FIRMA.N).filter(Boolean), t = v.reduce((a, c) => a + c.c, 0);
+    filas.push(v.length ? { lab: [0, 1, 2].map(j => v.reduce((a, c) => a + c.lab[j] * c.c, 0) / t), c: t / v.length } : null);
+  }
+  return { origen, conf, roi, orig, celdas, filas };
+}
+
+/* Distancia entre dos zonas. Si las dos son "mezcladas" (manchas, dos tonos) el promedio engaña y se tolera más;
+   si una es lisa y la otra muy mezclada, se penaliza un poco. */
+function distCelda(a, b) {
+  const d = distPelo(a.lab, b.lab);
+  if (a.m >= 4 && b.m >= 4) return d * 0.6;
+  return Math.abs(a.m - b.m) >= 5 ? d + 8 : d;
+}
+
+/* Distancia de color entre las zonas de dos firmas, mirando solo las zonas que ambas tienen y dando más peso
+   a las más fiables (peso = raíz del producto de sus confianzas). Una zona dudosa influye poco.
+   - Por filas (arriba / medio / abajo): casi no depende de la postura; separa "cabeza oscura y cuerpo claro"
+     de "cabeza clara y cuerpo oscuro".
+   - Por cuadrícula, también con la imagen volteada (la mascota puede mirar a un lado u otro).
+   Devuelve la distancia, o null si no hay zonas suficientes para comparar. */
+function distanciaRegional(A, B) {
+  const N = FIRMA.N;
+  let sf = 0, wf = 0, nf = 0;
+  for (let f = 0; f < N; f++) if (A.filas[f] && B.filas[f]) {
+    const w = Math.sqrt(A.filas[f].c * B.filas[f].c); sf += w * distPelo(A.filas[f].lab, B.filas[f].lab); wf += w; nf++;
+  }
+  const dFilas = nf >= 2 && wf > 0 ? sf / wf : null;
+  let dCuadro = null;
+  for (const voltear of [false, true]) {
+    let s = 0, w = 0, n = 0;
+    for (let f = 0; f < N; f++) for (let c = 0; c < N; c++) {
+      const a = A.celdas[f * N + c], b = B.celdas[f * N + (voltear ? N - 1 - c : c)];
+      if (a && b) { const q = Math.sqrt(a.c * b.c); s += q * distCelda(a, b); w += q; n++; }
+    }
+    if (n >= 4 && w > 0 && (dCuadro === null || s / w < dCuadro)) dCuadro = s / w;
+  }
+  if (dFilas === null && dCuadro === null) return null;
+  return dFilas === null ? dCuadro : dCuadro === null ? dFilas : 0.55 * dFilas + 0.45 * dCuadro;
+}
+
+/* Cuánto pesa cada parte del parecido. Solo se usan las partes que ambos lados tienen: un reporte antiguo
+   (sin zonas) se compara solo por su paleta, sin perder puntos por eso. */
+const PESO_ZONAS = 0.45, ESCALA_ZONAS = 22, ESCALA_ZONAS_MIXTA = 27;
+
+/* porcentaje de similitud visual (0 a 100) entre lo que busca el usuario y un reporte.
+   Sirve para maqueta -> foto, foto -> foto y reportes antiguos. No es una identificación. */
 function parecido(busqueda, r) {
-  if (!r.paleta || !r.paleta.length) return 0;
-  const sPaleta = parecidoPaletas(busqueda.paleta, r.paleta);
-  const zonas = busqueda.firma && r.firma ? distanciaRegional(busqueda.firma, r.firma) : null;
-  /* Si la mascota tiene manchas (oscuro y claro a la vez, como un dálmata), el color promedio de cada zona sale
-     gris y engaña: un perro todo blanco "se parece" más a un dálmata dibujado que un dálmata real. En ese caso
-     las zonas pesan poco y manda la paleta (que sí ve el blanco y el negro por separado). */
-  const co = claroOscuro(prepararPaleta(busqueda.paleta)), manchada = Math.min(co.osc, co.cla) >= 0.05;
-  const pz = manchada ? 0.15 : PESO_ZONAS, pp = 1 - pz;
+  if (!r.paleta || !r.paleta.length || !busqueda.paleta || !busqueda.paleta.length) return 0;
+  // las paletas se preparan una sola vez por consulta y por reporte
+  const A = busqueda._pp || (busqueda._pp = prepararPaleta(busqueda.paleta));
+  const B = r._pp || (r._pp = prepararPaleta(r.paleta));
+  const FA = busqueda.firma, FB = r.firma;
+  const mixta = !!(FA && FB && FA.origen !== FB.origen) || (!!FA && !FB && FA.origen === 1) || (!FA && !!FB && FB.origen === 1);
+  const sPaleta = parecidoPaletas(A, B, mixta);
+  const zonas = FA && FB ? distanciaRegional(FA, FB) : null;
   let s = sPaleta;
-  if (zonas !== null) s = pp * sPaleta + pz * Math.exp(-Math.pow(zonas / ESCALA_ZONAS, 2));
+  if (zonas !== null) {
+    /* Si la mascota tiene manchas (oscuro y claro a la vez, como un dálmata) el color promedio de cada zona
+       sale gris y engaña: ahí las zonas pesan menos y manda la paleta, que sí ve el blanco y el negro por separado. */
+    const co = claroOscuro(A), manchada = Math.min(co.osc, co.cla) >= 0.05;
+    const fiable = 0.3 + 0.7 * Math.sqrt(FA.conf * FB.conf);        // zonas poco fiables (segmentación dudosa) pesan menos
+    const pz = (manchada ? 0.3 : PESO_ZONAS) * fiable;
+    s = (1 - pz) * sPaleta + pz * Math.exp(-Math.pow(zonas / (mixta ? ESCALA_ZONAS_MIXTA : ESCALA_ZONAS), 2));
+  }
   let pct = 100 * s;
   if (busqueda.tipo && r.tipo && busqueda.tipo !== r.tipo) pct *= 0.25;   // perro y gato casi nunca coinciden
   if (busqueda.tamano && r.tamano) pct *= 1 - 0.08 * Math.abs(TAMANOS.indexOf(busqueda.tamano) - TAMANOS.indexOf(r.tamano));
@@ -194,6 +276,8 @@ function cargarImagen(archivo) {
   });
 }
 
+/* Abre la foto y la reduce. Devuelve la foto reducida (dataUrl y canvas) y sus dimensiones originales.
+   El análisis de colores lo hace describirFoto() (firma-visual.js), porque necesita la elipse que dibuja el usuario. */
 async function procesarFoto(archivo, maximo = 900) {
   if (!archivo || !archivo.type.startsWith('image/')) throw new Error('Sube una fotografía (JPG o PNG).');
   if (archivo.size > 15 * 1024 * 1024) throw new Error('La foto pesa más de 15 MB. Elige una más liviana.');
@@ -202,11 +286,7 @@ async function procesarFoto(archivo, maximo = 900) {
   const c = document.createElement('canvas');
   c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
   c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
-  // colores y zonas se calculan una sola vez, sobre la foto ya reducida (no sobre la original)
-  let paleta, firma = '';
-  try { ({ paleta, firma } = analizarFoto(c)); } catch (e) { paleta = paletaDeImagen(im); }
-  if (!paleta.length) paleta = paletaDeImagen(im);
-  return { dataUrl: c.toDataURL('image/jpeg', 0.8), paleta, firma };
+  return { dataUrl: c.toDataURL('image/jpeg', 0.8), lienzo: c, orig: { w: im.naturalWidth, h: im.naturalHeight } };
 }
 
 /* ----- 4) Google Sheets (mediante Google Apps Script) ----- */
@@ -248,8 +328,16 @@ async function cargarReportes() {
 async function enviarReporte(datos) {
   if (!COLITAS_API_URL) {
     const lista = leerPrueba();
-    const { fotoDataUrl, web, ...resto } = datos;
-    lista.unshift({ ...resto, id: 'local-' + Date.now(), foto: fotoDataUrl });
+    const { fotoDataUrl, web, coincidencias, ...resto } = datos;
+    const id = 'local-' + Date.now();
+    lista.unshift({ ...resto, id, foto: fotoDataUrl });
+    if (coincidencias && coincidencias.length) {        // modo prueba: la notificación queda en este navegador (ver coincidencias.js)
+      try {
+        const previas = JSON.parse(localStorage.getItem('colitas_coincidencias_prueba') || '[]');
+        const nuevas = coincidencias.map(c => ({ avisoId: c.avisoId, reporteId: id, pct: c.pct, fecha: fechaHace(0), foto: fotoDataUrl, distrito: datos.distrito, lugar: datos.lugar }));
+        localStorage.setItem('colitas_coincidencias_prueba', JSON.stringify([...nuevas, ...previas].slice(0, 20)));
+      } catch (e) { /* si no hay espacio, el reporte se guarda igual */ }
+    }
     try { localStorage.setItem(CLAVE_PRUEBA, JSON.stringify(lista.slice(0, 10))); }
     catch (e) { throw new Error('No hay espacio para guardar la prueba en este navegador.'); }
     return { prueba: true };
@@ -316,12 +404,13 @@ function fichaReporte(r, pct, i) {
     ? `<img src="${esc(r.foto)}" alt="${r.tipo} encontrado en ${esc(r.distrito)}" loading="lazy" referrerpolicy="no-referrer">`
     : mascotaSVG(r.tipo, r.colores, manchas, 'av' + esc(r.id), r.tamano || 'grande');
   const nivel = pct >= 70 ? 'alto' : pct >= 45 ? 'medio' : 'bajo';
+  const etiqueta = pct === null ? '' : pct >= 65 ? 'Similitud visual' : pct >= 45 ? 'Posible coincidencia' : '';
   const q = encodeURIComponent(`${r.lugar}, ${r.distrito}, Callao, Perú`);
   const wa = r.telefono
     ? `<a class="contactar" href="https://wa.me/51${r.telefono}?text=${encodeURIComponent('Hola, vi tu reporte en Colitas Felices Callao. Creo que es mi mascota.')}" target="_blank" rel="noopener">Es mi mascota</a>`
     : '';
-  return `<article class="ficha" style="animation-delay:${Math.min(i, 8) * .08}s">
-    ${pct !== null && i === 0 && pct >= 45 ? '<span class="cinta">Mejor coincidencia</span>' : ''}
+  return `<article class="ficha" id="reporte-${esc(r.id)}" style="animation-delay:${Math.min(i, 8) * .08}s">
+    ${pct !== null && i === 0 && pct >= 45 ? '<span class="cinta">Más parecida</span>' : ''}
     <div class="foto-ficha">${foto}</div>
     <div class="info">
       <span class="zona">${r.distrito === 'Callao' ? 'Callao (Cercado)' : esc(r.distrito)}</span>
@@ -337,7 +426,7 @@ function fichaReporte(r, pct, i) {
       <div class="pie-ficha">
         <a class="pin" href="https://www.google.com/maps/search/?api=1&query=${q}" target="_blank" rel="noopener" title="Ver en el mapa" aria-label="Ver ${esc(r.lugar)} en el mapa">${PIN}</a>
         ${wa}
-        ${pct !== null ? `<span class="porcentaje ${nivel}">${pct}% parecido</span>` : ''}
+        ${pct !== null ? `<span class="porcentaje ${nivel}" title="${etiqueta || 'Similitud visual baja'}">${etiqueta ? etiqueta + ' · ' : ''}${pct}%</span>` : ''}
       </div>
     </div>
   </article>`;

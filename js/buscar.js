@@ -1,7 +1,7 @@
 /* ==========================================================
    MASCOTAS PERDIDAS: buscar por maqueta o por imagen y filtrar los reportes
    Lo usa: mascotas-perdidas-callao.html
-   Necesita cargar antes: config.js, mascota-svg.js y reportes.js
+   Necesita cargar antes: config.js, mascota-svg.js, reportes.js, firma-visual.js y seleccion-mascota.js
    Contiene, en este orden: elegir cómo buscar, maqueta (dibujo), imagen (foto),
    búsqueda, filtros y lista de reportes.
    ========================================================== */
@@ -148,7 +148,7 @@ $('#comentario').addEventListener('input',e=>{ $('#contador').textContent=e.targ
 /* ============================================================
    2) IMAGEN: el usuario sube la foto de su mascota
    ============================================================ */
-const img = { dataUrl:null, paleta:null, firma:'', tipo:'perro', tamano:'' };
+const img = { dataUrl:null, lienzo:null, orig:null, paleta:null, firma:'', tipo:'perro', tamano:'' };
 
 function mostrarPaleta(paleta){
   $('#coloresDetectados').innerHTML = paleta.map(c =>
@@ -159,26 +159,35 @@ function mostrarPaleta(paleta){
 function mostrarZonas(texto){
   const f = parsearFirma(texto), cont = $('#zonasDetectadas');
   if(!cont) return;
-  const celdas = texto ? texto.split('|')[2].split(',') : [];
-  cont.innerHTML = f ? celdas.map(c => c==='-' ? '<i class="vacia"></i>' : `<i style="background:#${c}"></i>`).join('') : '';
+  cont.innerHTML = f ? f.celdas.map(c => c ? `<i style="background:${c.hex}"></i>` : '<i class="vacia"></i>').join('') : '';
   cont.closest('.zonas-bloque').hidden = !f;
 }
+
+/* colores y zonas de la foto; la elipse (opcional) orienta la separación del fondo */
+function analizarImagen(){
+  if(!img.lienzo) return;
+  let d; try { d = describirFoto(img.lienzo, selFoto.obtener(), img.orig); } catch(e){ d = { paleta:[], firma:'' }; }
+  img.paleta = d.paleta.length ? d.paleta : null; img.firma = d.firma;
+  mostrarPaleta(d.paleta); mostrarZonas(d.firma);
+}
+const selFoto = SeleccionMascota.montar($('#fotoUsuario'), { obligatoria:false, onCambio:analizarImagen });
 
 async function recibirFoto(archivo){
   if(!archivo) return;
   try {
     $('#zonaSubir').classList.add('cargando');
     const f = await procesarFoto(archivo, 700);
-    img.dataUrl = f.dataUrl; img.paleta = f.paleta; img.firma = f.firma;
+    img.dataUrl = f.dataUrl; img.lienzo = f.lienzo; img.orig = f.orig;
+    selFoto.reiniciar();
     $('#fotoUsuario').src = f.dataUrl;
-    mostrarPaleta(f.paleta); mostrarZonas(f.firma);
+    analizarImagen();
     $('#zonaSubir').hidden = true; $('#vistaFoto').hidden = false;
     toast('Foto lista. Ya puedes buscar 🐾');
   } catch(e){ toast(e.message); }
   finally { $('#zonaSubir').classList.remove('cargando'); $('#archivoFoto').value=''; }
 }
 function quitarFoto(){
-  img.dataUrl = null; img.paleta = null; img.firma = ''; mostrarZonas('');
+  img.dataUrl = null; img.lienzo = null; img.orig = null; img.paleta = null; img.firma = ''; mostrarZonas(''); selFoto.reiniciar();
   $('#vistaFoto').hidden = true; $('#zonaSubir').hidden = false; $('#fotoUsuario').removeAttribute('src');
 }
 $('#archivoFoto').addEventListener('change', e => recibirFoto(e.target.files[0]));
@@ -245,6 +254,16 @@ $('#btnBuscarImg').onclick = ()=>{
 };
 $('#btnQuitarBusqueda').onclick = ()=>{ busqueda = null; pintarLista(false); };
 
+/* «No encuentro a mi mascota»: lleva lo que buscó el usuario al formulario de Avisos de búsqueda */
+$('#btnNoEncuentro').onclick = ()=>{
+  if(busqueda){
+    try { sessionStorage.setItem('colitas_aviso_previo', JSON.stringify({
+      tipo:busqueda.tipo, tamano:busqueda.tamano, nota:(busqueda.nota||'').trim(), nombre:busqueda.nombre||'',
+      foto: busqueda.modo==='imagen' ? busqueda.miniatura : '' })); } catch(e){}
+  }
+  location.href = 'avisos-busqueda.html#publicar';
+};
+
 /* ============================================================
    4) FILTROS Y LISTA DE REPORTES
    ============================================================ */
@@ -280,6 +299,7 @@ function pintarLista(irAResultados){
 
   resumenBusqueda();
   $('#btnQuitarBusqueda').hidden = !busqueda;
+  $('#zonaNoEncuentro').hidden = !busqueda;     // «No encuentro a mi mascota»: solo después de buscar
   $('#tituloResultados').textContent = busqueda
     ? (busqueda.nombre ? `Coincidencias para ${busqueda.nombre}` : 'Coincidencias con tu mascota')
     : 'Reportes recientes en el Callao';
@@ -308,6 +328,15 @@ $('#fTexto').addEventListener('input', ()=>{ limite=12; pintarLista(false); });
 $('#btnLimpiarFiltros').onclick = ()=>{ ['#fTipo','#fTamano','#fDistrito','#fFecha','#fTexto'].forEach(s=>$(s).value=''); limite=12; pintarLista(false); };
 $('#btnMas').onclick = ()=>{ limite += 12; pintarLista(false); };
 
+/* Enlace de una notificación (#reporte-ID): se muestra ese reporte y se resalta */
+function abrirReporteDeEnlace(){
+  const m = /^#reporte-(.+)$/.exec(decodeURIComponent(location.hash));
+  if(!m || !TODOS.some(r=>r.id===m[1])) return;
+  limite = TODOS.length; pintarLista(false);
+  const el = document.getElementById('reporte-'+m[1]); if(!el) return;
+  el.classList.add('destacada'); el.scrollIntoView({ behavior:'smooth', block:'center' });
+}
+
 async function iniciarReportes(){
   $('#rejilla').innerHTML = '<div class="vacio">Cargando reportes…</div>';
   try {
@@ -315,6 +344,7 @@ async function iniciarReportes(){
     TODOS = lista;
     $('#avisoPrueba').hidden = !prueba;
     pintarLista(false);
+    abrirReporteDeEnlace();
   } catch(e){
     $('#rejilla').innerHTML = `<div class="vacio">No pudimos cargar los reportes. Revisa tu conexión e inténtalo otra vez.<br>
       <button class="herr" id="btnReintentar">Volver a intentar</button></div>`;

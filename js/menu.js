@@ -5,6 +5,15 @@ const nombres = ["Sami","Tom","Dusty","Nala","Hercules","Mía","Simba","Coco","B
 // 1. MENÚ: se dibuja dentro de <div id="menu"> para no repetirlo en cada página
 function crearMenu() {
     const contenedor = document.getElementById("menu");
+
+    // Sesión guardada por js/sesion.js: si hay una, el menú muestra el saldo de ColiCoins y "Cerrar sesión"
+    let sesion = null;
+    try { sesion = JSON.parse(localStorage.getItem("colitas_sesion") || "null"); } catch (e) {}
+    const escapar = t => String(t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const sesionMenu = sesion && sesion.token
+        ? `<li><a href="tienda-solidaria.html" class="menu-saldo" title="Tu saldo de ColiCoins">🪙 ${Number(sesion.saldo) || 0}</a></li>
+                    <li><a href="#" id="salirSesion">Cerrar sesión (${escapar(String(sesion.nombre || "").split(" ")[0])})</a></li>`
+        : `<li><a href="iniciosesion.html">Iniciar sesión</a></li>`;
     contenedor.innerHTML = `
         <div class="menu" id="barra-menu">
             <img src="imagenes/logo-colitas-felices-menu.png" class="logo" alt="Logo de Colitas Felices Callao, protección de mascotas">
@@ -27,11 +36,13 @@ function crearMenu() {
                         <div class="submenu">
                             <ul>
                                 <li><a href="mascotas-perdidas-callao.html">Mascotas perdidas</a></li>
+                                <li><a href="avisos-busqueda.html">Avisos de búsqueda</a></li>
                                 <li><a href="reportar-mascota.html">Reportar una mascota</a></li>
                             </ul>
                         </div>
                     </li>
-                    <li><a href="iniciosesion.html">Iniciar sesión</a></li>
+                    <li><a href="tienda-solidaria.html">Tienda Solidaria</a></li>
+                    ${sesionMenu}
                     <li><a href="contactanos.html">Contáctanos</a></li>
                 </ul>
             </div>
@@ -61,6 +72,13 @@ function crearMenu() {
             }
         };
     });
+
+    const salir = document.getElementById("salirSesion");
+    if (salir) salir.onclick = function (e) {
+        e.preventDefault();
+        if (typeof cerrarSesionColitas === "function") cerrarSesionColitas();
+        else { localStorage.removeItem("colitas_sesion"); location.href = "iniciosesion.html"; }
+    };
 
     // En celular y tablet: el botón ☰ muestra u oculta los enlaces
     document.getElementById("boton-menu").onclick = function () {

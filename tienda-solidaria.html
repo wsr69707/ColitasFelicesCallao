@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tienda Solidaria | Colitas Felices Callao</title>
+<meta name="description" content="Tienda Solidaria de Colitas Felices Callao: tus compras apoyan a los albergues de animales del Callao. Si colaboras en reunir mascotas con sus dueños, canjea ColiCoins por productos.">
+<meta name="keywords" content="Tienda solidaria mascotas Callao, Apoyar albergues de animales en Callao, Productos para ayudar a mascotas, ColiCoins">
+<meta name="robots" content="index, follow">
+    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Nunito:wght@400;700;800&display=swap" rel="stylesheet">
+    <link href="css/base.css" rel="stylesheet">
+    <link href="css/estructura.css" rel="stylesheet">
+    <link href="css/reportar.css" rel="stylesheet">
+    <link href="css/tienda.css" rel="stylesheet">
+    <link href="css/adaptable.css" rel="stylesheet">
+</head>
+
+<body>
+<div class="cabecera">
+    <div id="menu"></div>
+    <div class="portada portada-chica portada-tienda">
+        <h1>Tienda Solidaria</h1>
+        <p>Cada compra ayuda a los animales del Callao</p>
+    </div>
+</div>
+
+<!-- ================= DESTINO DE LOS FONDOS Y MONEDA ================= -->
+<section class="seccion fondo-celeste">
+  <div class="tienda-intro">
+    <div class="tienda-destino">
+      <h2>¿A dónde va tu dinero?</h2>
+      <p>Lo recaudado se destina <strong>principalmente a apoyar a los albergues de animales del Callao</strong>. El resto se usa para el <strong>mantenimiento, desarrollo y futuras mejoras de esta página</strong>.</p>
+    </div>
+
+    <div class="tienda-cuenta" id="cuentaBarra">
+      <!-- visitante -->
+      <div id="barraVisitante" hidden>
+        <p><strong>¿Ayudas a reunir mascotas con su familia?</strong> Inicia sesión para ver los productos en <b>ColiCoins</b> y canjearlos como recompensa.</p>
+        <a class="boton" id="enlaceEntrar" href="iniciosesion.html?volver=tienda-solidaria.html">Iniciar sesión</a>
+        <a class="boton boton-celeste" href="registro.html">Crear cuenta</a>
+      </div>
+      <!-- usuario con sesión -->
+      <div id="barraUsuario" hidden>
+        <p>Hola, <strong id="nombreUsuario"></strong></p>
+        <p class="saldo">🪙 <span id="saldoUsuario">0</span> ColiCoins</p>
+        <div class="pastillas dos conmutador" role="group" aria-label="Moneda de los precios">
+          <button type="button" class="pastilla" id="verCC" aria-pressed="true">🪙 ColiCoins</button>
+          <button type="button" class="pastilla" id="verPEN" aria-pressed="false">S/ Soles</button>
+        </div>
+        <p class="nota-moneda" id="notaMoneda"></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="tienda-como" id="comoGanar" hidden>
+    <h3>¿Cómo gano ColiCoins?</h3>
+    <p>Reporta una mascota que encontraste con tu sesión iniciada. Cuando su familia la recupere y confirmemos el reencuentro, recibes ColiCoins. Quienes más colaboran, más pueden canjear.</p>
+    <a class="boton" href="reportar-mascota.html">Reportar una mascota</a>
+  </div>
+</section>
+
+<!-- ================= PRODUCTOS ================= -->
+<section class="seccion fondo-blanco">
+  <h2>Productos</h2>
+  <p class="subtitulo" id="subProductos">Elige tus productos y agrégalos al carrito.</p>
+  <p class="aviso-prueba" id="avisoCatalogo" hidden></p>
+  <div class="productos" id="productos" aria-live="polite"></div>
+</section>
+
+<!-- ================= CARRITO Y COMPRA ================= -->
+<section class="seccion fondo-gris" id="carrito">
+  <div class="tarjeta-reporte tarjeta-carrito">
+    <h2>Tu carrito</h2>
+    <div id="carritoVacio" class="vacio-carrito">Aún no agregaste productos 🐾</div>
+
+    <div id="carritoLleno" hidden>
+      <ul class="lineas" id="lineas"></ul>
+      <p class="total">Total: <strong id="total"></strong></p>
+      <p class="aviso-saldo" id="avisoSaldo" hidden></p>
+
+      <form id="formCompra" novalidate autocomplete="on">
+        <h3>Datos para la entrega</h3>
+        <div class="campo dos-columnas">
+          <div>
+            <label for="cNombre">Tu nombre <b class="req">*</b></label>
+            <input type="text" id="cNombre" maxlength="60" autocomplete="name">
+          </div>
+          <div>
+            <label for="cTelefono">Tu celular <b class="req">*</b></label>
+            <input type="tel" id="cTelefono" inputmode="numeric" maxlength="11" placeholder="987 654 321" autocomplete="tel">
+          </div>
+        </div>
+        <div class="campo">
+          <h3>¿Cómo quieres recibirlo?</h3>
+          <div class="pastillas dos" role="group" aria-label="Entrega">
+            <button type="button" class="pastilla" data-entrega="recojo" aria-pressed="true">Lo recojo</button>
+            <button type="button" class="pastilla" data-entrega="envio" aria-pressed="false">Envío a domicilio</button>
+          </div>
+        </div>
+        <div class="campo" id="campoDireccion" hidden>
+          <label for="cDireccion">Dirección de entrega <b class="req">*</b></label>
+          <input type="text" id="cDireccion" maxlength="150" placeholder="Calle, número, distrito y referencia" autocomplete="street-address">
+        </div>
+        <p class="error" id="errorCompra" role="alert" hidden></p>
+        <button type="submit" class="boton" id="btnComprar">Comprar</button>
+        <button type="button" class="herr suave" id="btnVaciar">Vaciar carrito</button>
+      </form>
+    </div>
+
+    <div class="gracias" id="graciasCompra" hidden>
+      <div class="gracias-icono" aria-hidden="true">🐾</div>
+      <h2>¡Gracias por apoyar a los animales del Callao!</h2>
+      <p id="graciasTexto"></p>
+      <div class="instrucciones-pago" id="instruccionesPago" hidden></div>
+      <div class="acciones"><button type="button" class="boton boton-celeste" id="btnSeguir">Seguir comprando</button></div>
+    </div>
+  </div>
+</section>
+
+<div class="pie" id="pie">
+    <p><strong>Una mascota no es solo compañía, es parte de la familia.</strong>
+    Cuidemos, valoremos y protejamos a quienes siempre están a nuestro lado. 🐾❤️</p>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="js/config.js"></script>
+<script src="js/mascota-svg.js"></script>
+<script src="js/reportes.js"></script>
+<script src="js/sesion.js"></script>
+<script src="js/tienda.js"></script>
+<script src="js/menu.js"></script>
+</body>
+</html>
